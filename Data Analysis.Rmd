@@ -1,0 +1,101 @@
+---
+title: "Data Analysis Lab 2"
+author: "Andrea Tillotson"
+date: "10/17/2021"
+output: pdf_document
+---
+
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(ggplot2)
+library(plyr)
+library(gmodels)
+library(psych)
+
+gss <- GSS_2006_csv <- read_csv("GSS.2006.csv")
+```
+
+# 1 Recoding a Variable to Categories
+
+I recoded the variable *age* into a new variable *age_cat* using the cut() function. I chose fairly conventional age categories, starting with 18-24 years, 25-34 years, and so on until a category of 85+ is reached. I summarize the age categories and their codes below with *age_groups*.
+
+```{r Recoding a continuous variable}
+gss$age_cat <- cut(gss$age, breaks = c(18, 25, 35, 45, 55, 65, 75, 85, 90),
+                   labels = FALSE, right = FALSE)
+age_groups <- ddply(gss, "age_cat", summarise, min = min(age), max = max(age))
+age_groups
+
+```
+
+# 2 Recoding a Variable to Values
+
+I starded with the *rotapple* variable, which has respondents answer whether they strongly agree, somewhat agree, somewhat disagree, or strongly disagree with whether immoral actions by one person can corrupt society in general. I wanted to add labels to the responses, but I also wanted to flip the order since I felt it would make more sense for the responses to be ordered in terms of strongest disagreement to strongest agreement.
+
+I do this in the code below by subtracting *rotapple* from 1 + the categories of response for *rotapple* (1 + 4 = 5). Then I make my new variable a factor before applying ordered() to name the categories. Lastly, I made a table that summarize the new variable and its counts. We can see that most respondents agree at least somewhat that the immoral actions of one person can corrupt society as a whole.
+
+```{r}
+gss$rotapple_new <- 5 - gss$rotapple
+gss$rotapple_fac <- as.factor(gss$rotapple_new)
+gss$lab_rotapple <- ordered(gss$rotapple_fac, levels = c(1, 2, 3, 4),
+                            labels = c("Disagree strongly", "Disagree somewhat",
+                                       "Agree somewhat", "Agree strongly"))
+
+table(gss$lab_rotapple, gss$rotapple_new)
+```
+
+# 3 Cross-Tabulating Two Variables
+
+I chose to do a cross-tabulation between the age categories created above and the variable *evolved*, which asks respondents, "Human beings, as we know them today, developed from earlier species of animals. (Is that true or false?)" Answering 1 indicates true and answering 2 indicates false.
+
+I chose these variables because I'm curious whether believing in evolution changes across age groups. Particularly, I hypothesize that younger age groups will have higher rates of believing in evolution than older groups because the standard of schools teaching evolution has been a relatively recent phenomenon. However, I will also be somewhat skeptical of any conclusions based off a cross-tabulation alone, as it is possible there are age-period-cohort effects that aren't being taken into account.
+
+```{r}
+CrossTable(gss$age_cat, gss$evolved,
+           prop.r = FALSE, prop.c = TRUE, prop.t = FALSE, prop.chisq = FALSE,
+           format="SPSS")
+```
+
+As we can see in the table, the hypothesis that younger groups will have higher rates of believing in evolution than older groups was supported. Age groups 1-3 (ages 18-44) consistently have a higher rate of believing in evolution than not believing in evolution. At age group 4 and above (ages 45+), we see the opposite trend with respondent groups consistently having higher rates of evolution skepticism than belief. As mentioned before, additional analysis might look at age-period-cohort effects to better understand the table's trends. For example, it is conceivable that what we observe as an age trend in the table above is actually a cohort trend. This could be evaluated by using the cumulative GSS survey and holding age constant.
+
+# 4 Running a Linear Regression
+
+I was curious about whether an increase in the respondent's father's education predicted an increase in the respondent's  mother's education. Although I know that well-educated individuals tend to date and marry other well-educated individuals, I wondered if there really would be significant predictive power given that a respondent's parents' (by definition) come from an earlier generation than the respondent where gender norms may have affected the predictive power we would expect today. I predicted that there would be some significance to the relationship, since it is likely still true for the parents that well-educated individuals partner with other well-educated individuals, but that the coefficient describing the increase in mother's education would be smaller than for the respondent's partner.
+
+```{r}
+# Respondent's father and respondent's mother
+describe(gss$paeduc)
+describe(gss$maeduc)
+pcouple_educ = lm(maeduc ~ paeduc, data = gss)
+summary(pcouple_educ)
+```
+
+```{r}
+# Respondent and spouse
+describe(gss$educ)
+describe(gss$speduc)
+rcouple_educ = lm(speduc ~ educ, data = gss)
+summary(rcouple_educ)
+```
+The first linear regression, **pcouple_educ**, shows the relationship between *paeduc* and *maeduc* which is statistically significant at the 0.01 level. For every additional year in father's education, the mother's education increased by about 0.622 years on average. The second linear regression, **rcouple_educ**, shows the relationship between *educ* and *speduc* and is also statisticaly significant at the 0.01 level. For every additional year in respondent's education, their spouses education increased by about 0.643 on average.
+
+As predicted, the **rcouple_educ** regression has a higher slope than **pcouple_educ**. This can be interpreted in the following way; for each additional year of education achieved by the respondent, their spouse's education increased by more than the respondent's mother's education increased for each additional year of education achieved by the respondent's father.
+
+Although this is interesting, we cannot determine anything about cultural or generational shifts for women's educational attainment as the second regression does not account for gender (i.e. the respondent and their spouse could be male, female, non-binary, etc.). An interesting direction for further analysis would be to group respondents by gender and run two regressions, one for female respondents and one for male respondents.
+
+# 5 Plotting Two Variables
+
+I was curious whether a preference for traditional gender roles in the family was observed at higher rates for individuals who are older. I used the variable *fefam* as a proxy for a preference for traditional gender roles in the family. The variable asked respondents whether they strongly agree, agree, disagree, or strongly agree with the following statement: "It is much better for everyone involved if the man is the achiever outside the home and the woman takes care of the home and family."
+
+My hypothesis is that those who strongly agree with the statement, indicating a preference for traditional gender roles, will have a higher mean age than those who strongly disagree. I made a boxplot to get a sense of whether this hypothesis is supported.
+
+```{r, warning = FALSE}
+ggplot(gss, aes(factor(fefam), age)) +
+  geom_boxplot(aes(fill = factor(fefam))) +
+  labs(title = "Traditional Gender Roles by Age") +
+  xlab("Preference for traditional gender roles") + ylab("Age") +
+  scale_x_discrete(breaks = c(1, 2, 3, 4, NA),
+                   labels = c("Strongly agree", "Agree", "Disagree", 
+                              "Strongly disagree", "NA"))
+```
+
+The boxplot indicates support for my hypothesis. The mean age for those who strongly agree with the statement is about 10 years older than those who strongly disagree. Additionally, those who agree (though not strongly) are, on average, about five years older than those who disagree.
